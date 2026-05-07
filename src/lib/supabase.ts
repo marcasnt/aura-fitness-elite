@@ -116,53 +116,29 @@ export const createClientProfile = async (payload: {
   avatar?: string;
   selfieUrl?: string;
 }) => {
-  // Guardar sesión actual del coach antes de signUp (evita deslogueo)
-  const { data: { session: coachSession } } = await supabase.auth.getSession();
-
-  try {
-    // 1. Crear usuario en Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: payload.email,
-      password: payload.password,
-    });
-    if (authError) throw authError;
-    if (!authData.user) throw new Error('No se pudo crear el usuario');
-
-    // 2. Forzar sesión del NUEVO cliente para que el UPDATE cumpla RLS (id = auth.uid())
-    if (authData.session) {
-      await supabase.auth.setSession({
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-      });
-    }
-
-    // 3. Actualizar perfil creado por trigger
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
+  // 1. Crear usuario en Auth — pasamos todos los datos en user_metadata
+  //    para que el trigger handle_new_user cree el perfil completo de una vez.
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: payload.email,
+    password: payload.password,
+    options: {
+      data: {
         name: payload.name,
-        goal: payload.goal,
-        phone: payload.phone,
+        goal: payload.goal || 'Hipertrofia General',
+        phone: payload.phone || '+34600000000',
         monthly_fee: payload.monthlyFee,
         next_payment_date: payload.nextPaymentDate,
         payment_status: payload.paymentStatus,
         avatar: payload.avatar,
         selfie_url: payload.selfieUrl,
-      })
-      .eq('id', authData.user.id);
+      },
+    },
+  });
 
-    if (updateError) throw updateError;
+  if (authError) throw authError;
+  if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-    return authData.user.id;
-  } finally {
-    // 4. SIEMPRE restaurar sesión del coach
-    if (coachSession) {
-      await supabase.auth.setSession({
-        access_token: coachSession.access_token,
-        refresh_token: coachSession.refresh_token,
-      });
-    }
-  }
+  return authData.user.id;
 };
 
 export const updateProfile = async (userId: string, updates: Partial<User>) => {
