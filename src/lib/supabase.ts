@@ -129,14 +129,25 @@ export const createClientProfile = async (payload: {
         monthly_fee: payload.monthlyFee,
         next_payment_date: payload.nextPaymentDate,
         payment_status: payload.paymentStatus,
-        avatar: payload.avatar,
-        selfie_url: payload.selfieUrl,
       },
     },
   });
 
   if (authError) throw authError;
   if (!authData.user) throw new Error('No se pudo crear el usuario');
+
+  // 2. Actualizar perfil con imagen y datos extra usando RPC (ignora RLS)
+  if (payload.avatar || payload.selfieUrl) {
+    const { error: rpcError } = await supabase.rpc('update_client_by_coach', {
+      client_id: authData.user.id,
+      client_name: payload.name,
+      client_goal: payload.goal,
+      client_phone: payload.phone,
+      client_avatar: payload.avatar,
+      client_selfie_url: payload.selfieUrl,
+    });
+    if (rpcError) throw rpcError;
+  }
 
   return authData.user.id;
 };
