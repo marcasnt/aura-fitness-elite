@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import type { User, RoutineDay, Exercise, WorkoutLog, Message } from '../types/fitness';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -120,7 +120,7 @@ export const createClientProfile = async (payload: {
   const { data: { session: coachSession } } = await supabase.auth.getSession();
 
   try {
-    // 1. Crear usuario en Auth (ahora estamos logueados como el NUEVO cliente)
+    // 1. Crear usuario en Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: payload.email,
       password: payload.password,
@@ -128,8 +128,15 @@ export const createClientProfile = async (payload: {
     if (authError) throw authError;
     if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-    // 2. Actualizar perfil creado por trigger USANDO la sesión del nuevo cliente
-    //    RLS update policy (id = auth.uid()) se cumple porque auth.uid() == authData.user.id
+    // 2. Forzar sesión del NUEVO cliente para que el UPDATE cumpla RLS (id = auth.uid())
+    if (authData.session) {
+      await supabase.auth.setSession({
+        access_token: authData.session.access_token,
+        refresh_token: authData.session.refresh_token,
+      });
+    }
+
+    // 3. Actualizar perfil creado por trigger
     const { error: updateError } = await supabase
       .from('profiles')
       .update({
@@ -148,7 +155,7 @@ export const createClientProfile = async (payload: {
 
     return authData.user.id;
   } finally {
-    // 3. SIEMPRE restaurar sesión del coach (incluso si hubo error)
+    // 4. SIEMPRE restaurar sesión del coach
     if (coachSession) {
       await supabase.auth.setSession({
         access_token: coachSession.access_token,
