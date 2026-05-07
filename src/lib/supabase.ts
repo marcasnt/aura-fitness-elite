@@ -116,6 +116,9 @@ export const createClientProfile = async (payload: {
   avatar?: string;
   selfieUrl?: string;
 }) => {
+  // Guardar sesión actual del coach antes de signUp (evita deslogueo)
+  const { data: { session: coachSession } } = await supabase.auth.getSession();
+
   // 1. Crear usuario en Auth
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: payload.email,
@@ -123,6 +126,14 @@ export const createClientProfile = async (payload: {
   });
   if (authError) throw authError;
   if (!authData.user) throw new Error('No se pudo crear el usuario');
+
+  // Restaurar sesión del coach inmediatamente
+  if (coachSession) {
+    await supabase.auth.setSession({
+      access_token: coachSession.access_token,
+      refresh_token: coachSession.refresh_token,
+    });
+  }
 
   // 2. Upsert profile (el trigger ya debería crear uno, pero actualizamos datos extra)
   const { error } = await supabase.from('profiles').upsert({
@@ -308,15 +319,30 @@ export const sendMessage = async (msg: Omit<Message, 'id' | 'timestamp'>) => {
 
 // ─── Realtime Subscriptions ───
 
-export const subscribeToMessages = (callback: (msg: Message) => void) => {
-  return supabase
-    .channel('public:messages')
+export const subscribeToMessages = (userId: string, callback: (msg: Message) => void) => {
+  const channel = supabase
+    .channel(`messages-user-${userId}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages' },
-      (payload) => callback(mapMessage(payload.new))
+      (payload) => {
+        const msg = mapMessage(payload.new);
+        // Solo notificar mensajes donde el usuario actual es emisor o receptor
+        if (msg.senderId === userId || msg.receiverId === userId) {
+          callback(msg);
+        }
+      }
     )
-    .subscribe();
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('[Realtime] Error de canal de mensajes');
+      }
+      if (status === 'TIMED_OUT') {
+        console.warn('[Realtime] Timeout de conexión');
+      }
+    });
+
+  return channel;
 };
 
 export const subscribeToProfiles = (callback: (profile: User) => void) => {

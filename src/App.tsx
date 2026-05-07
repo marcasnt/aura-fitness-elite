@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { User, RoutineDay, WorkoutLog, Message, Exercise } from './types/fitness';
 import { LoginScreen } from './components/LoginScreen';
 import { CoachDashboard } from './components/CoachDashboard';
@@ -36,6 +36,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [showSupabaseBlueprint, setShowSupabaseBlueprint] = useState(false);
+  const coachIdRef = useRef<string | null>(null);
 
   // ─── Carga inicial y auth state ───
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function App() {
         const profile = await getProfile(session.user.id);
         if (profile) {
           setCurrentUser(profile);
+          if (profile.role === 'coach') coachIdRef.current = profile.id;
           await loadAllData(profile);
         }
       }
@@ -59,13 +61,20 @@ export default function App() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        // Protección: si el coach creó un cliente, signUp dispara brevemente
+        // una sesión del nuevo usuario. Ignorar si ya somos coach con ID distinto.
+        if (coachIdRef.current && session.user.id !== coachIdRef.current) {
+          return;
+        }
         const profile = await getProfile(session.user.id);
         if (profile) {
           setCurrentUser(profile);
+          if (profile.role === 'coach') coachIdRef.current = profile.id;
           await loadAllData(profile);
         }
       } else {
         setCurrentUser(null);
+        coachIdRef.current = null;
         setClients([]);
         setRoutines([]);
         setLogs([]);
@@ -107,7 +116,7 @@ export default function App() {
   // ─── Realtime: mensajes ───
   useEffect(() => {
     if (!hasSupabaseConfig || !currentUser) return;
-    const sub = subscribeToMessages((msg) => {
+    const sub = subscribeToMessages(currentUser.id, (msg) => {
       setMessages((prev) => {
         if (prev.find((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
