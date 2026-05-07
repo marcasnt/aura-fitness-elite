@@ -119,41 +119,43 @@ export const createClientProfile = async (payload: {
   // Guardar sesión actual del coach antes de signUp (evita deslogueo)
   const { data: { session: coachSession } } = await supabase.auth.getSession();
 
-  // 1. Crear usuario en Auth
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: payload.email,
-    password: payload.password,
-  });
-  if (authError) throw authError;
-  if (!authData.user) throw new Error('No se pudo crear el usuario');
-
-  // Restaurar sesión del coach inmediatamente
-  if (coachSession) {
-    await supabase.auth.setSession({
-      access_token: coachSession.access_token,
-      refresh_token: coachSession.refresh_token,
+  try {
+    // 1. Crear usuario en Auth (ahora estamos logueados como el NUEVO cliente)
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: payload.email,
+      password: payload.password,
     });
+    if (authError) throw authError;
+    if (!authData.user) throw new Error('No se pudo crear el usuario');
+
+    // 2. Actualizar perfil creado por trigger USANDO la sesión del nuevo cliente
+    //    RLS update policy (id = auth.uid()) se cumple porque auth.uid() == authData.user.id
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        name: payload.name,
+        goal: payload.goal,
+        phone: payload.phone,
+        monthly_fee: payload.monthlyFee,
+        next_payment_date: payload.nextPaymentDate,
+        payment_status: payload.paymentStatus,
+        avatar: payload.avatar,
+        selfie_url: payload.selfieUrl,
+      })
+      .eq('id', authData.user.id);
+
+    if (updateError) throw updateError;
+
+    return authData.user.id;
+  } finally {
+    // 3. SIEMPRE restaurar sesión del coach (incluso si hubo error)
+    if (coachSession) {
+      await supabase.auth.setSession({
+        access_token: coachSession.access_token,
+        refresh_token: coachSession.refresh_token,
+      });
+    }
   }
-
-  // 2. Upsert profile (el trigger ya debería crear uno, pero actualizamos datos extra)
-  const { error } = await supabase.from('profiles').upsert({
-    id: authData.user.id,
-    email: payload.email,
-    name: payload.name,
-    role: 'client',
-    goal: payload.goal,
-    phone: payload.phone,
-    monthly_fee: payload.monthlyFee,
-    next_payment_date: payload.nextPaymentDate,
-    payment_status: payload.paymentStatus,
-    avatar: payload.avatar,
-    selfie_url: payload.selfieUrl,
-    streak: 0,
-    adherence_rate: 100,
-  });
-  if (error) throw error;
-
-  return authData.user.id;
 };
 
 export const updateProfile = async (userId: string, updates: Partial<User>) => {

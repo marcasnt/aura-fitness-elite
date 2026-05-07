@@ -160,9 +160,15 @@ export default function App() {
     selfieUrl?: string;
   }) => {
     if (!hasSupabaseConfig) return;
-    await createClientProfile(payload);
-    const updated = await getAllClients();
-    setClients(updated);
+    try {
+      await createClientProfile(payload);
+      const updated = await getAllClients();
+      setClients(updated);
+    } catch (err: any) {
+      console.error('Error creando cliente:', err);
+      alert(err?.message || 'Error creando cliente. Revisa la consola.');
+      throw err;
+    }
   };
 
   const handleAddRoutineDay = async (routine: Omit<RoutineDay, 'id' | 'createdAt' | 'exercises'>) => {
