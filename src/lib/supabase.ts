@@ -12,6 +12,24 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ─── Storage: Subir avatar ───
+export const uploadAvatarToStorage = async (userId: string, base64Image: string): Promise<string> => {
+  // Convertir base64 a Blob
+  const response = await fetch(base64Image);
+  const blob = await response.blob();
+  const fileExt = blob.type.split('/')[1] || 'png';
+  const fileName = `${userId}.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(fileName, blob, { upsert: true });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+  return data.publicUrl;
+};
+
 // ─── Mappers: Supabase snake_case → App camelCase ───
 
 const mapProfile = (row: any): User => ({
@@ -128,7 +146,23 @@ export const createClientProfile = async (payload: {
   if (authError) throw authError;
   if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-  // 2. Crear/actualizar perfil completo via RPC (ignora RLS)
+  // 2. Subir imagen a Storage si es base64 (evita pasar base64 gigante por RPC)
+  let avatarUrl = payload.avatar;
+  let selfieUrl = payload.selfieUrl;
+  if (payload.selfieUrl && payload.selfieUrl.startsWith('data:')) {
+    try {
+      const publicUrl = await uploadAvatarToStorage(authData.user.id, payload.selfieUrl);
+      avatarUrl = publicUrl;
+      selfieUrl = publicUrl;
+    } catch (e: any) {
+      console.error('Error subiendo avatar a Storage:', e);
+      // Si falla el upload, usar avatar por defecto
+      avatarUrl = `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=200`;
+      selfieUrl = '';
+    }
+  }
+
+  // 3. Crear/actualizar perfil completo via RPC (solo URLs cortas, no base64)
   const { error: rpcError } = await supabase.rpc('upsert_client_by_coach', {
     client_id: authData.user.id,
     client_email: payload.email,
@@ -138,8 +172,8 @@ export const createClientProfile = async (payload: {
     client_monthly_fee: payload.monthlyFee,
     client_next_payment_date: payload.nextPaymentDate,
     client_payment_status: payload.paymentStatus,
-    client_avatar: payload.avatar || null,
-    client_selfie_url: payload.selfieUrl || null,
+    client_avatar: avatarUrl || null,
+    client_selfie_url: selfieUrl || null,
   });
   if (rpcError) throw rpcError;
 
