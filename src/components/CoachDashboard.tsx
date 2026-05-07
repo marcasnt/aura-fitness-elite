@@ -194,7 +194,7 @@ export const CoachDashboard: React.FC<CoachDashboardProps> = ({
   };
 
   // Handle adding exercise
-  const handleAddExerciseToRoutine = (routineDayId: string) => {
+  const handleAddExerciseToRoutine = async (routineDayId: string) => {
     const finalName = selectedPreset || customExerciseName;
     if (!finalName) return;
 
@@ -210,8 +210,14 @@ export const CoachDashboard: React.FC<CoachDashboardProps> = ({
       imageUrl: exerciseImageUrl || undefined
     };
 
-    onAddExercise(routineDayId, newExercise);
-    
+    try {
+      await onAddExercise(routineDayId, newExercise);
+    } catch (err: any) {
+      console.error('[handleAddExerciseToRoutine] Error:', err);
+      alert(err?.message || 'Error al agregar ejercicio. Revisa la consola.');
+      return;
+    }
+
     // Reset exercise input fields
     setCustomExerciseName('');
     setSelectedPreset('');
