@@ -118,36 +118,30 @@ export const createClientProfile = async (payload: {
 }) => {
   // 1. Crear usuario en Auth — pasamos todos los datos en user_metadata
   //    para que el trigger handle_new_user cree el perfil completo de una vez.
+  // 1. Crear usuario en Auth — SOLO email y password, sin metadata
+  //    para evitar errores 500 del trigger en Supabase.
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: payload.email,
     password: payload.password,
-    options: {
-      data: {
-        name: payload.name,
-        goal: payload.goal || 'Hipertrofia General',
-        phone: payload.phone || '+34600000000',
-        monthly_fee: payload.monthlyFee,
-        next_payment_date: payload.nextPaymentDate,
-        payment_status: payload.paymentStatus,
-      },
-    },
   });
 
   if (authError) throw authError;
   if (!authData.user) throw new Error('No se pudo crear el usuario');
 
-  // 2. Actualizar perfil con imagen y datos extra usando RPC (ignora RLS)
-  if (payload.avatar || payload.selfieUrl) {
-    const { error: rpcError } = await supabase.rpc('update_client_by_coach', {
-      client_id: authData.user.id,
-      client_name: payload.name,
-      client_goal: payload.goal,
-      client_phone: payload.phone,
-      client_avatar: payload.avatar,
-      client_selfie_url: payload.selfieUrl,
-    });
-    if (rpcError) throw rpcError;
-  }
+  // 2. Crear/actualizar perfil completo via RPC (ignora RLS)
+  const { error: rpcError } = await supabase.rpc('upsert_client_by_coach', {
+    client_id: authData.user.id,
+    client_email: payload.email,
+    client_name: payload.name,
+    client_goal: payload.goal || 'Hipertrofia General',
+    client_phone: payload.phone || '+34600000000',
+    client_monthly_fee: payload.monthlyFee,
+    client_next_payment_date: payload.nextPaymentDate,
+    client_payment_status: payload.paymentStatus,
+    client_avatar: payload.avatar || null,
+    client_selfie_url: payload.selfieUrl || null,
+  });
+  if (rpcError) throw rpcError;
 
   return authData.user.id;
 };
