@@ -142,29 +142,34 @@ export const CoachDashboard: React.FC<CoachDashboardProps> = ({
     e.preventDefault();
     if (!newClientName || !newClientEmail || !newClientPassword) return;
 
-    await onAddClient({
-      name: newClientName,
-      email: newClientEmail,
-      password: newClientPassword,
-      goal: newClientGoal || 'Hipertrofia General',
-      phone: newClientPhone || '+34600000000',
-      monthlyFee: newClientFee,
-      nextPaymentDate: newClientPaymentDate || new Date().toISOString().split('T')[0],
-      paymentStatus: 'pending',
-      avatar: newClientSelfie || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=200`,
-      selfieUrl: newClientSelfie || '',
-    });
+    try {
+      await onAddClient({
+        name: newClientName,
+        email: newClientEmail,
+        password: newClientPassword,
+        goal: newClientGoal || 'Hipertrofia General',
+        phone: newClientPhone || '+34600000000',
+        monthlyFee: newClientFee,
+        nextPaymentDate: newClientPaymentDate || new Date().toISOString().split('T')[0],
+        paymentStatus: 'pending',
+        avatar: newClientSelfie || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=200`,
+        selfieUrl: newClientSelfie || '',
+      });
 
-    // Reset fields
-    setNewClientName('');
-    setNewClientEmail('');
-    setNewClientPassword('');
-    setNewClientGoal('');
-    setNewClientPhone('');
-    setNewClientSelfie('');
-    setNewClientFee(120);
-    setNewClientPaymentDate('');
-    setShowAddClientModal(false);
+      // Reset fields and close modal on success
+      setNewClientName('');
+      setNewClientEmail('');
+      setNewClientPassword('');
+      setNewClientGoal('');
+      setNewClientPhone('');
+      setNewClientSelfie('');
+      setNewClientFee(120);
+      setNewClientPaymentDate('');
+      setShowAddClientModal(false);
+    } catch (err: any) {
+      console.error('[handleCreateClient] Error:', err);
+      alert(err?.message || 'Error al guardar el cliente. Revisa la consola.');
+    }
   };
 
   // Handle creating routine day
