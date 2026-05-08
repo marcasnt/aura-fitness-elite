@@ -48,11 +48,6 @@ export default function App() {
     }
     const init = async () => {
       setLoading(true);
-      // Refrescar sesión para asegurar JWT actualizado (rol, metadata, etc.)
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        console.warn('[Auth] No se pudo refrescar la sesión:', refreshError.message);
-      }
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const profile = await getProfile(session.user.id);

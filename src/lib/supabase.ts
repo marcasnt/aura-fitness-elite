@@ -248,42 +248,57 @@ export const getRoutinesByClient = async (clientId: string): Promise<RoutineDay[
 };
 
 export const createRoutine = async (routine: Omit<RoutineDay, 'id' | 'createdAt' | 'exercises'>) => {
-  const { data, error } = await supabase
-    .from('routines')
-    .insert({
-      client_id: routine.clientId,
-      name: routine.name,
-      description: routine.description,
-      is_active: routine.isActive,
-    })
-    .select()
-    .single();
+  // Usar RPC para bypass RLS (evita error 403 cuando el JWT del coach falla)
+  const { data, error } = await supabase.rpc('create_routine', {
+    p_client_id: routine.clientId,
+    p_name: routine.name,
+    p_description: routine.description || null,
+    p_is_active: routine.isActive,
+  });
   if (error) {
-    logSupabaseError('createRoutine', error);
+    logSupabaseError('createRoutine (RPC)', error);
     throw error;
   }
-  return mapRoutine(data);
+  // La RPC devuelve JSON con snake_case keys
+  const row = data as any;
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    name: row.name,
+    description: row.description,
+    isActive: row.is_active,
+    createdAt: row.created_at?.split('T')[0] ?? '',
+    exercises: [],
+  } as RoutineDay;
 };
 
 export const addExercise = async (exercise: Omit<Exercise, 'id'> & { routineId: string }) => {
-  const { error } = await supabase.from('exercises').insert({
-    routine_id: exercise.routineId,
-    name: exercise.name,
-    category: exercise.category,
-    sets: exercise.sets,
-    reps: exercise.reps,
-    weight: exercise.weight,
-    rest_time: exercise.restTime,
-    notes: exercise.notes,
-    image_url: exercise.imageUrl,
-    position: 0,
+  const { error } = await supabase.rpc('add_exercise', {
+    p_routine_id: exercise.routineId,
+    p_name: exercise.name,
+    p_category: exercise.category,
+    p_sets: exercise.sets,
+    p_reps: exercise.reps,
+    p_weight: exercise.weight,
+    p_rest_time: exercise.restTime,
+    p_notes: exercise.notes || null,
+    p_image_url: exercise.imageUrl || null,
+    p_position: 0,
   });
-  if (error) throw error;
+  if (error) {
+    logSupabaseError('addExercise (RPC)', error);
+    throw error;
+  }
 };
 
 export const deleteExercise = async (exerciseId: string) => {
-  const { error } = await supabase.from('exercises').delete().eq('id', exerciseId);
-  if (error) throw error;
+  const { error } = await supabase.rpc('delete_exercise', {
+    p_exercise_id: exerciseId,
+  });
+  if (error) {
+    logSupabaseError('deleteExercise (RPC)', error);
+    throw error;
+  }
 };
 
 // ─── Workout Logs ───
@@ -374,12 +389,18 @@ export const createPayment = async (payment: {
   payment_date: string;
   notes?: string;
 }) => {
-  const { data, error } = await supabase
-    .from('payments')
-    .insert(payment)
-    .select()
-    .single();
-  if (error) throw error;
+  const { data, error } = await supabase.rpc('create_payment', {
+    p_client_id: payment.client_id,
+    p_amount: payment.amount,
+    p_status: payment.status,
+    p_method: payment.method,
+    p_payment_date: payment.payment_date,
+    p_notes: payment.notes || null,
+  });
+  if (error) {
+    logSupabaseError('createPayment (RPC)', error);
+    throw error;
+  }
   return data;
 };
 
