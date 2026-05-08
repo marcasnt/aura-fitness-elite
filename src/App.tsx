@@ -21,6 +21,7 @@ import {
   addExercise,
   deleteExercise as deleteExerciseDb,
   createWorkoutLog,
+  createPayment,
   sendMessage as sendMessageDb,
   subscribeToMessages,
 } from './lib/supabase';
@@ -264,18 +265,33 @@ export default function App() {
     const nextPaymentDate = nextDate.toISOString().split('T')[0];
     const newEntry = { date: today, amount: client.monthlyFee, status: 'paid' as const, method: 'Confirmado en app' };
     const newHistory = [newEntry, ...(client.paymentHistory || [])];
-    await updateProfile(clientId, {
-      paymentStatus: 'paid',
-      paymentHistory: newHistory,
-      nextPaymentDate,
-    });
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id === clientId
-          ? { ...c, paymentStatus: 'paid' as const, paymentHistory: newHistory, nextPaymentDate }
-          : c
-      )
-    );
+    try {
+      // 1. Insertar en tabla payments
+      await createPayment({
+        client_id: clientId,
+        amount: client.monthlyFee,
+        status: 'paid',
+        method: 'Confirmado en app',
+        payment_date: today,
+        notes: `Pago confirmado por coach`,
+      });
+      // 2. Actualizar perfil del cliente
+      await updateProfile(clientId, {
+        paymentStatus: 'paid',
+        paymentHistory: newHistory,
+        nextPaymentDate,
+      });
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id === clientId
+            ? { ...c, paymentStatus: 'paid' as const, paymentHistory: newHistory, nextPaymentDate }
+            : c
+        )
+      );
+    } catch (err: any) {
+      console.error('[handleMarkPaymentPaid] Error:', err);
+      alert('Error al registrar el pago: ' + (err?.message || 'Desconocido'));
+    }
   };
 
   const handleAddWeightEntry = async (clientId: string, weight: number) => {

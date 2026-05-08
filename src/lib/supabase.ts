@@ -12,6 +12,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ─── Helper: Log detallado de errores de Supabase ───
+const logSupabaseError = (context: string, error: any) => {
+  console.error(`[Supabase Error :: ${context}]`, {
+    message: error?.message,
+    code: error?.code,
+    details: error?.details,
+    hint: error?.hint,
+  });
+};
+
 // ─── Storage: Subir avatar ───
 export const uploadAvatarToStorage = async (userId: string, base64Image: string): Promise<string> => {
   // Convertir base64 a Blob
@@ -248,7 +258,10 @@ export const createRoutine = async (routine: Omit<RoutineDay, 'id' | 'createdAt'
     })
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    logSupabaseError('createRoutine', error);
+    throw error;
+  }
   return mapRoutine(data);
 };
 
@@ -349,6 +362,36 @@ export const sendMessage = async (msg: Omit<Message, 'id' | 'timestamp'>) => {
     .single();
   if (error) throw error;
   return mapMessage(data);
+};
+
+// ─── Payments ───
+
+export const createPayment = async (payment: {
+  client_id: string;
+  amount: number;
+  status: string;
+  method: string;
+  payment_date: string;
+  notes?: string;
+}) => {
+  const { data, error } = await supabase
+    .from('payments')
+    .insert(payment)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const getPaymentsByClient = async (clientId: string) => {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('payment_date', { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  return data || [];
 };
 
 // ─── Realtime Subscriptions ───
