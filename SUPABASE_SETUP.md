@@ -4,6 +4,28 @@
 
 ---
 
+## ⚠️ IMPORTANTE — Cambios Críticos Recientes
+
+### Corrección del ID del Coach (FIX principal)
+Anteriormente el frontend usaba un ID hardcodeado `coach-1` para el coach, lo cual rompía:
+- El chat en tiempo real (mensajes no llegaban al coach real)
+- Las políticas RLS de mensajes (el coach no podía ver mensajes dirigidos a `coach-1`)
+- Todo el flujo de mensajes coach-cliente
+
+**Solución aplicada:**
+- El frontend ahora obtiene el UUID real del coach desde Supabase (`getCoachProfile`)
+- `ClientDashboard` recibe `coachId` como prop y usa el UUID real
+- `CoachDashboard` recibe el perfil real del coach autenticado
+- La RLS de mensajes ahora permite al coach ver **todos** los mensajes (`OR public.is_coach()`)
+
+### SQL Unificado
+Ahora existe un único archivo SQL que configura TODO el backend:
+📄 **`supabase_backend_unified.sql`** — Ejecuta este archivo completo en el SQL Editor de Supabase.
+
+Incluye: tablas, funciones, triggers, índices, RLS completo, storage, realtime y permisos.
+
+---
+
 ## 📋 Índice
 
 1. [Crear proyecto en Supabase](#1-crear-proyecto-en-supabase)
@@ -32,12 +54,18 @@
 
 ## 2. Ejecutar el SQL (Tablas + RLS)
 
-Ve a **SQL Editor** en tu dashboard de Supabase, crea un nuevo query y pega todo el siguiente código:
+Ve a **SQL Editor** en tu dashboard de Supabase, crea un nuevo query y pega TODO el contenido del archivo:
+
+📄 **`supabase_backend_unified.sql`** (en la raíz del proyecto)
+
+Este archivo incluye absolutamente todo lo necesario: tablas, funciones, triggers, índices, RLS, storage, realtime y permisos.
+
+> ⚠️ **NO uses el SQL antiguo de abajo** — está aquí solo como referencia histórica. Usa siempre `supabase_backend_unified.sql`.
 
 ```sql
 -- ============================================================
--- AURA ELITE FITNESS — Schema Completo para Supabase
--- Ejecuta este SQL completo en el SQL Editor de Supabase
+-- AURA ELITE FITNESS — Schema Completo para Supabase (REFERENCIA)
+-- Usa supabase_backend_unified.sql en su lugar
 -- ============================================================
 
 -- --------------------------------------------------
@@ -326,12 +354,14 @@ create policy "Coach puede gestionar pagos"
 -- workout_logs, messages, profiles (payment_status)
 ```
 
-> ⚠️ **IMPORTANTE**: Después de ejecutar el SQL:
+> ⚠️ **IMPORTANTE**: Después de ejecutar el SQL unificado (`supabase_backend_unified.sql`):
 > 1. Ve a **Authentication → Users** en Supabase
 > 2. Crea el usuario del coach manualmente: `marcasnt@gmail.com`
-> 3. Copia su `UUID` generado
-> 4. Descomenta y ejecuta la sección **12. SEED DATA** con ese UUID
-> 5. Ve a **Database → Replication** y habilita realtime para: `workout_logs`, `messages`, `profiles`
+> 3. **Copia su UUID generado** (es crucial, ya no se usa `coach-1`)
+> 4. Descomenta y ejecuta la sección **10. SEED DATA** al final del SQL unificado con ese UUID real
+> 5. El SQL unificado ya incluye la configuración de **Realtime**, pero verifica en **Database → Replication** que estén: `messages`, `workout_logs`, `profiles`
+>
+> 🔑 **El UUID real del coach es ahora la clave de todo**: el frontend lo obtiene dinámicamente desde la tabla `profiles`, y los mensajes/chat en tiempo real dependen de que coincida con el `auth.uid()` del coach autenticado.
 
 ---
 
@@ -835,17 +865,17 @@ useEffect(() => {
 ## ✅ Checklist Final de Despliegue
 
 - [ ] Proyecto creado en Supabase
-- [ ] SQL completo ejecutado en SQL Editor
-- [ ] Coach creado en Auth con UUID en profiles
-- [ ] Realtime habilitado en `workout_logs`, `messages`, `profiles`
+- [ ] **SQL unificado** (`supabase_backend_unified.sql`) ejecutado en SQL Editor
+- [ ] Coach creado en Auth con **UUID real** insertado en `profiles`
+- [ ] Realtime habilitado en `workout_logs`, `messages`, `profiles` (incluido en SQL unificado)
+- [ ] Storage bucket `avatars` creado con policies (incluido en SQL unificado)
 - [ ] `@supabase/supabase-js` instalado
-- [ ] `src/lib/supabase.ts` creado
-- [ ] `src/lib/auth.ts` creado
+- [ ] `src/lib/supabase.ts` y `src/lib/auth.ts` creados/actualizados
 - [ ] Variables `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` configuradas en Vercel
-- [ ] Handlers de App.tsx migrados de localStorage a Supabase
+- [ ] **Frontend actualizado**: coach ID dinámico, no hardcodeado
 - [ ] `npm run build` compila sin errores
 - [ ] Desplegado en Vercel
-- [ ] URL de producción verificada y funcional
+- [ ] Chat coach-cliente probado en tiempo real
 
 ---
 

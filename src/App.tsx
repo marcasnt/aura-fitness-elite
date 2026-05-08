@@ -3,7 +3,6 @@ import type { User, RoutineDay, WorkoutLog, Message, Exercise } from './types/fi
 import { LoginScreen } from './components/LoginScreen';
 import { CoachDashboard } from './components/CoachDashboard';
 import { ClientDashboard } from './components/ClientDashboard';
-import { COACH_USER } from './data/initialData';
 import { Info, Database } from 'lucide-react';
 import {
   supabase,
@@ -14,6 +13,7 @@ import {
   getAllLogs,
   getLogsByClient,
   getAllMessages,
+  getCoachProfile,
   createClientProfile,
   updateProfile,
   deleteClientProfile,
@@ -30,6 +30,7 @@ const hasSupabaseConfig = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.en
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [coach, setCoach] = useState<User | null>(null);
   const [clients, setClients] = useState<User[]>([]);
   const [routines, setRoutines] = useState<RoutineDay[]>([]);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
@@ -88,6 +89,7 @@ export default function App() {
   const loadAllData = async (user: User) => {
     try {
       if (user.role === 'coach') {
+        setCoach(user);
         const [c, r, l, m] = await Promise.all([
           getAllClients(),
           getAllRoutines(),
@@ -99,14 +101,16 @@ export default function App() {
         setLogs(l);
         setMessages(m);
       } else {
-        const [r, l, m] = await Promise.all([
+        const [r, l, m, coachProfile] = await Promise.all([
           getRoutinesByClient(user.id),
           getLogsByClient(user.id),
           getAllMessages(),
+          getCoachProfile(),
         ]);
         setRoutines(r);
         setLogs(l);
         setMessages(m);
+        if (coachProfile) setCoach(coachProfile);
       }
     } catch (e) {
       console.error('Error cargando datos de Supabase:', e);
@@ -141,6 +145,7 @@ export default function App() {
   const handleLogout = useCallback(async () => {
     await signOut();
     setCurrentUser(null);
+    setCoach(null);
     setClients([]);
     setRoutines([]);
     setLogs([]);
@@ -301,7 +306,7 @@ export default function App() {
           <LoginScreen onLoginSuccess={handleLoginSuccess} />
         ) : currentUser.role === 'coach' ? (
           <CoachDashboard
-            coach={COACH_USER}
+            coach={currentUser}
             clients={clients}
             routines={routines}
             messages={messages}
@@ -319,6 +324,7 @@ export default function App() {
         ) : (
           <ClientDashboard
             client={currentUser}
+            coachId={coach?.id || ''}
             routines={routines}
             logs={logs}
             messages={messages}

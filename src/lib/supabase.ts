@@ -122,6 +122,16 @@ export const getAllProfiles = async (): Promise<User[]> => {
   return (data || []).map(mapProfile);
 };
 
+export const getCoachProfile = async (): Promise<User | null> => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('role', 'coach')
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapProfile(data);
+};
+
 export const createClientProfile = async (payload: {
   email: string;
   password: string;
