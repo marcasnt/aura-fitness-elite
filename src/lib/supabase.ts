@@ -154,37 +154,63 @@ export const createClientProfile = async (payload: {
   avatar?: string;
   selfieUrl?: string;
 }) => {
-  // 1. Crear usuario en Auth — pasamos todos los datos en user_metadata
-  //    para que el trigger handle_new_user cree el perfil completo de una vez.
-  // 1. Crear usuario en Auth — SOLO email y password, sin metadata
-  //    para evitar errores 500 del trigger en Supabase.
+  // 1. Intentar signUp (crear usuario en Auth)
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: payload.email,
     password: payload.password,
   });
 
-  if (authError) throw authError;
-  if (!authData.user) throw new Error('No se pudo crear el usuario');
+  let userId: string | null = null;
+  let isExistingUser = false;
 
-  // 2. Subir imagen a Storage si es base64 (evita pasar base64 gigante por RPC)
+  if (authError) {
+    // Si el usuario YA existe en auth.users
+    if (authError.message?.toLowerCase().includes('already registered') || authError.status === 422) {
+      isExistingUser = true;
+      // Buscar si el perfil existe por email (ahora que RLS está deshabilitado)
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', payload.email)
+        .maybeSingle();
+
+      if (existingProfile?.id) {
+        userId = existingProfile.id;
+        console.warn('[createClientProfile] Usuario ya existe, actualizando perfil:', payload.email);
+      } else {
+        // Usuario existe en auth pero NO en profiles (fue borrado)
+        throw new Error(
+          `El email ${payload.email} ya está registrado en el sistema, pero su perfil fue eliminado. ` +
+          `Ve a Supabase → Authentication → Users y elimina el usuario manualmente, o usa otro email.`
+        );
+      }
+    } else {
+      throw authError;
+    }
+  } else if (authData.user) {
+    userId = authData.user.id;
+  }
+
+  if (!userId) throw new Error('No se pudo obtener el ID del usuario');
+
+  // 2. Subir imagen a Storage si es base64
   let avatarUrl = payload.avatar;
   let selfieUrl = payload.selfieUrl;
   if (payload.selfieUrl && payload.selfieUrl.startsWith('data:')) {
     try {
-      const publicUrl = await uploadAvatarToStorage(authData.user.id, payload.selfieUrl);
+      const publicUrl = await uploadAvatarToStorage(userId, payload.selfieUrl);
       avatarUrl = publicUrl;
       selfieUrl = publicUrl;
     } catch (e: any) {
       console.error('Error subiendo avatar a Storage:', e);
-      // Si falla el upload, usar avatar por defecto
       avatarUrl = `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 999999)}?auto=format&fit=crop&q=80&w=200`;
       selfieUrl = '';
     }
   }
 
-  // 3. Crear/actualizar perfil completo via RPC (solo URLs cortas, no base64)
+  // 3. Crear/actualizar perfil completo via RPC
   const { error: rpcError } = await supabase.rpc('upsert_client_by_coach', {
-    client_id: authData.user.id,
+    client_id: userId,
     client_email: payload.email,
     client_name: payload.name,
     client_goal: payload.goal || 'Hipertrofia General',
@@ -197,7 +223,7 @@ export const createClientProfile = async (payload: {
   });
   if (rpcError) throw rpcError;
 
-  return authData.user.id;
+  return userId;
 };
 
 export const updateProfile = async (userId: string, updates: Partial<User>) => {
